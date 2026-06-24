@@ -344,13 +344,21 @@ client.on('messageCreate', async (message) => {
         }
 
         if (foundKeys === 0) {
-          fs.rmSync(tmpDir, { recursive: true, force: true });
-          return loadingMsg.edit(`❌ **Chưa có dữ liệu Depot Key.**\nHiện tại chưa có khóa giải mã cho tựa game **${gameName}**. Vui lòng tải thủ công file \`.lua\` lên nhé!`);
+          await loadingMsg.edit(`⚠️ Kho O.S.T chưa có Key. Đang tự động cào dữ liệu từ các kho tàng cộng đồng lớn...`);
+          const externalData = await fetchExternalDepotData(appId, repoPath);
+          if (externalData.success) {
+            luaUrl = externalData.luaUrl || '';
+            manifestUrls = manifestUrls.concat(externalData.manifestUrls || []);
+            foundKeys = "Nhiều (Kéo từ Cộng Đồng)";
+          } else {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+            return loadingMsg.edit(`❌ **Thất bại.**\nĐã quét toàn bộ kho cộng đồng nhưng vẫn chưa có dữ liệu cho tựa game **${gameName}**. Vui lòng tải thủ công file \`.lua\` lên nhé!`);
+          }
+        } else {
+          const luaFileName = `${appId}.lua`;
+          fs.writeFileSync(path.join(repoPath, 'lua', luaFileName), luaContent);
+          luaUrl = `https://raw.githubusercontent.com/Lax4game/OST-Manifest-Store/main/lua/${luaFileName}`;
         }
-
-        const luaFileName = `${appId}.lua`;
-        fs.writeFileSync(path.join(repoPath, 'lua', luaFileName), luaContent);
-        luaUrl = `https://raw.githubusercontent.com/Lax4game/OST-Manifest-Store/main/lua/${luaFileName}`;
       }
 
       games = games.filter(g => g.appId.toString() !== appId.toString());
@@ -563,14 +571,23 @@ client.on('interactionCreate', async interaction => {
           }
         }
 
+        let manifestUrls = [];
         if (foundKeys === 0) {
-          fs.rmSync(tmpDir, { recursive: true, force: true });
-          return interaction.editReply(`❌ **Chưa có dữ liệu Depot Key.**\nHiện tại chưa có khóa giải mã cho tựa game **${gameName}**.\n*(Mẹo: Dùng lệnh gõ tay \`/addgame <AppID>\` và đính kèm file \`.lua\` nếu muốn tự tải file)*`);
+          await interaction.editReply(`⚠️ Kho O.S.T chưa có Key. Đang bật chế độ "Cào Dữ Liệu" từ các kho tàng cộng đồng lớn...`);
+          const externalData = await fetchExternalDepotData(appId, repoPath);
+          if (externalData.success) {
+            luaUrl = externalData.luaUrl || '';
+            manifestUrls = externalData.manifestUrls || [];
+            foundKeys = "Nhiều (Kéo từ Cộng Đồng)";
+          } else {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+            return interaction.editReply(`❌ **Thất bại.**\nĐã cào dữ liệu toàn cầu nhưng không có kho nào chứa Key giải mã cho tựa game **${gameName}**.\n*(Mẹo: Dùng lệnh gõ tay \`/addgame <AppID>\` và đính kèm file \`.lua\` để tải thủ công)*`);
+          }
+        } else {
+          const luaFileName = `${appId}.lua`;
+          fs.writeFileSync(path.join(repoPath, 'lua', luaFileName), luaContent);
+          luaUrl = `https://raw.githubusercontent.com/Lax4game/OST-Manifest-Store/main/lua/${luaFileName}`;
         }
-
-        const luaFileName = `${appId}.lua`;
-        fs.writeFileSync(path.join(repoPath, 'lua', luaFileName), luaContent);
-        luaUrl = `https://raw.githubusercontent.com/Lax4game/OST-Manifest-Store/main/lua/${luaFileName}`;
 
         games = games.filter(g => g.appId.toString() !== appId.toString());
         games.push({
@@ -578,7 +595,7 @@ client.on('interactionCreate', async interaction => {
           name: gameName,
           cover: gameCover,
           luaUrl: luaUrl,
-          manifestUrls: []
+          manifestUrls: manifestUrls
         });
 
         fs.writeFileSync(jsonPath, JSON.stringify(games, null, 2));
@@ -673,6 +690,61 @@ client.on('interactionCreate', async interaction => {
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 });
+
+const AdmZip = require('adm-zip');
+
+async function fetchExternalDepotData(appId, repoPath) {
+  const sources = [
+    `https://cysaw.top/uploads/${appId}.zip`,
+    `https://steambox.gdata.fun/cnhz/qingdan/${appId}.zip`,
+    `https://api.printedwaste.com/gfk/download/${appId}`
+  ];
+
+  for (const url of sources) {
+    try {
+      console.log(`Đang cào dữ liệu từ kho: ${url}`);
+      let headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' };
+      if (url.includes('printedwaste.com')) {
+        headers['Authorization'] = 'Bearer dGhpc19pcyBhX3JhbmRvbV90b2tlbg==';
+      }
+      
+      const axios = require('axios');
+      const response = await axios.get(url, { responseType: 'arraybuffer', headers, timeout: 15000 });
+      const buffer = Buffer.from(response.data);
+      const zip = new AdmZip(buffer);
+      const zipEntries = zip.getEntries();
+      
+      let foundSomething = false;
+      let luaContent = '';
+      let manifestUrls = [];
+
+      const fs = require('fs');
+      const path = require('path');
+      if (!fs.existsSync(path.join(repoPath, 'lua'))) fs.mkdirSync(path.join(repoPath, 'lua'), { recursive: true });
+      if (!fs.existsSync(path.join(repoPath, 'manifests'))) fs.mkdirSync(path.join(repoPath, 'manifests'), { recursive: true });
+
+      zipEntries.forEach(function (zipEntry) {
+        if (zipEntry.name.endsWith('.lua')) {
+           luaContent = zipEntry.getData().toString('utf8');
+           fs.writeFileSync(path.join(repoPath, 'lua', `${appId}.lua`), luaContent);
+           foundSomething = true;
+        } else if (zipEntry.name.endsWith('.manifest')) {
+           fs.writeFileSync(path.join(repoPath, 'manifests', zipEntry.name), zipEntry.getData());
+           manifestUrls.push(`https://raw.githubusercontent.com/Lax4game/OST-Manifest-Store/main/manifests/${zipEntry.name}`);
+           foundSomething = true;
+        }
+      });
+      
+      if (foundSomething) {
+        let luaUrl = luaContent ? `https://raw.githubusercontent.com/Lax4game/OST-Manifest-Store/main/lua/${appId}.lua` : '';
+        return { success: true, luaUrl, manifestUrls };
+      }
+    } catch (e) {
+      console.log(`Kho ${url} không có dữ liệu (hoặc lỗi). Bỏ qua.`);
+    }
+  }
+  return { success: false };
+}
 
 client.login(TOKEN);
 
