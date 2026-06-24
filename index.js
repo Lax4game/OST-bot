@@ -130,9 +130,39 @@ setInterval(async () => {
   }
 }, 10000);
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`[BOT] Đã đăng nhập thành công: ${client.user.tag}`);
   client.user.setActivity('/getkey hoặc /buyvip', { type: ActivityType.Playing });
+
+  // Đăng ký Slash Commands để hiện menu gợi ý
+  const commands = [
+    {
+      name: 'getkey',
+      description: 'Nhận Key O.S.T Manager (CASUAL - Miễn phí 1 ngày)'
+    },
+    {
+      name: 'buyvip',
+      description: 'Mua Key VIP để mở khóa toàn bộ tính năng'
+    },
+    {
+      name: 'addgame',
+      description: 'Quét và thêm Game vào kho (Chỉ Mod/Admin)',
+      options: [
+        {
+          name: 'appid',
+          description: 'Mã AppID của Game trên Steam',
+          type: 4, // Số nguyên (Integer)
+          required: true
+        }
+      ]
+    }
+  ];
+  try {
+    await client.application.commands.set(commands);
+    console.log('[BOT] Đã đăng ký Menu Slash Commands thành công!');
+  } catch (error) {
+    console.error('[BOT] Lỗi đăng ký Slash Commands:', error);
+  }
 });
 
 // Hệ thống Cooldown (Chống Spam)
@@ -388,6 +418,58 @@ client.on('messageCreate', async (message) => {
 
 // Xử lý khi bấm nút Mua VIP
 client.on('interactionCreate', async interaction => {
+  if (interaction.isChatInputCommand()) {
+    const { commandName } = interaction;
+    const userId = interaction.user.id;
+
+    if (commandName === 'getkey') {
+      const cooldowns = getCooldowns();
+      const lastUse = cooldowns[userId]?.getkey || 0;
+      const now = Date.now();
+      const ONE_DAY = 24 * 60 * 60 * 1000;
+
+      if (now - lastUse < ONE_DAY) {
+        const remainingHours = Math.ceil((ONE_DAY - (now - lastUse)) / (1000 * 60 * 60));
+        return interaction.reply(`⏳ **Bạn đã lấy Key hôm nay rồi!**\nVui lòng quay lại sau **${remainingHours} giờ** nữa để nhận Key mới nhé. Tránh lách luật nha! 😎`);
+      }
+
+      try {
+        const key = generateKey('CASUAL', userId, 1);
+        if (!cooldowns[userId]) cooldowns[userId] = {};
+        cooldowns[userId].getkey = now;
+        saveCooldowns(cooldowns);
+
+        await interaction.reply(`✅ **Tạo Key CASUAL Thành Công!**\n\n🔑 Key: \`${key}\`\n⏳ Thời hạn: **24 Giờ**\n🔓 Mở khóa: Các tính năng cơ bản.\n*Dán Key vào O.S.T Manager để truy cập.*`);
+        notifyTelegram(`🔔 <b>MỚI LẤY KEY CASUAL (Lệnh Menu)</b>\n👤 Khách: <code>${interaction.user.tag}</code> (ID: ${userId})\n🔑 Key: <code>${key}</code>`);
+      } catch (error) {
+        interaction.reply('❌ Có lỗi xảy ra!');
+      }
+    }
+
+    if (commandName === 'buyvip') {
+      const row = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId('buy_vip_1')
+            .setLabel('VIP 1 Ngày (10.000 VNĐ)')
+            .setStyle(ButtonStyle.Primary),
+          new ButtonBuilder()
+            .setCustomId('buy_vip_7')
+            .setLabel('VIP 7 Ngày (50.000 VNĐ)')
+            .setStyle(ButtonStyle.Success),
+        );
+      await interaction.reply({
+        content: '💎 **CHỌN GÓI VIP BẠN MUỐN MUA:**\n(Mở khóa Denuvo Ticket Extractor)',
+        components: [row]
+      });
+    }
+    
+    if (commandName === 'addgame') {
+      await interaction.reply('⚠️ Tính năng Add Game qua Slash Menu đang được nâng cấp. Vui lòng chat bằng chữ `/addgame <AppID>` như cũ để sử dụng ạ!');
+    }
+    return;
+  }
+
   if (!interaction.isButton()) return;
 
   if (interaction.customId.startsWith('buy_vip_')) {
