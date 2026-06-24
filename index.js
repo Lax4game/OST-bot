@@ -743,6 +743,62 @@ async function fetchExternalDepotData(appId, repoPath) {
       console.log(`Kho ${url} không có dữ liệu (hoặc lỗi). Bỏ qua.`);
     }
   }
+
+  // Nếu 3 kho API sập, chuyển sang cào dữ liệu trực tiếp từ các kho Github (Auiowu, ikun0014)
+  const githubRepos = ['Auiowu/ManifestAutoUpdate', 'tymolu233/ManifestAutoUpdate', 'ikun0014/ManifestHub'];
+  for (const repo of githubRepos) {
+    try {
+      console.log(`Đang cào dữ liệu từ Github Repo: ${repo}`);
+      const axios = require('axios');
+      const treeUrl = `https://api.github.com/repos/${repo}/branches/${appId}`;
+      const branchRes = await axios.get(treeUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
+      
+      const treeApi = branchRes.data.commit.commit.tree.url;
+      const treeRes = await axios.get(treeApi, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
+      
+      const files = treeRes.data.tree;
+      const keyFile = files.find(f => f.path.toLowerCase() === 'key.vdf');
+      const manifestFiles = files.filter(f => f.path.endsWith('.manifest'));
+      
+      if (keyFile) {
+        const keyUrl = `https://raw.githubusercontent.com/${repo}/${appId}/${keyFile.path}`;
+        const keyRes = await axios.get(keyUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 });
+        const vdfContent = keyRes.data;
+        
+        let luaContent = `-- Auto-generated from ${repo}\naddappid(${appId})\n`;
+        const regex = /"(\d+)"\s*\{\s*"DecryptionKey"\s*"([a-f0-9]+)"/gi;
+        let match;
+        let foundKeysCount = 0;
+        while ((match = regex.exec(vdfContent)) !== null) {
+            luaContent += `addappid(${match[1]}, 1, "${match[2]}")\n`;
+            foundKeysCount++;
+        }
+        
+        if (foundKeysCount > 0) {
+          const fs = require('fs');
+          const path = require('path');
+          if (!fs.existsSync(path.join(repoPath, 'lua'))) fs.mkdirSync(path.join(repoPath, 'lua'), { recursive: true });
+          if (!fs.existsSync(path.join(repoPath, 'manifests'))) fs.mkdirSync(path.join(repoPath, 'manifests'), { recursive: true });
+          
+          fs.writeFileSync(path.join(repoPath, 'lua', `${appId}.lua`), luaContent);
+          
+          let manifestUrls = [];
+          for (const m of manifestFiles) {
+             const mUrl = `https://raw.githubusercontent.com/${repo}/${appId}/${m.path}`;
+             const mRes = await axios.get(mUrl, { responseType: 'arraybuffer', headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 });
+             fs.writeFileSync(path.join(repoPath, 'manifests', m.path), Buffer.from(mRes.data));
+             manifestUrls.push(`https://raw.githubusercontent.com/Lax4game/OST-Manifest-Store/main/manifests/${m.path}`);
+          }
+          
+          let luaUrl = `https://raw.githubusercontent.com/Lax4game/OST-Manifest-Store/main/lua/${appId}.lua`;
+          return { success: true, luaUrl, manifestUrls };
+        }
+      }
+    } catch (e) {
+      console.log(`Github Repo ${repo} không có dữ liệu. Bỏ qua.`);
+    }
+  }
+
   return { success: false };
 }
 
