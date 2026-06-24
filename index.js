@@ -378,6 +378,24 @@ client.on('messageCreate', async (message) => {
       
       notifyTelegram(`🚀 <b>ADMIN VỪA THÊM GAME MỚI</b>\n🎮 Tên Game: <b>${gameName}</b>\n🛠 AppID: <code>${appId}</code>\n👨‍💻 Người thêm: <code>${message.author.tag}</code>`);
       
+      const NEW_GAME_CHANNEL_ID = '1518618101892251758';
+      try {
+        const channel = await client.channels.fetch(NEW_GAME_CHANNEL_ID);
+        const embed = new EmbedBuilder()
+          .setColor(0x00FF00) // Green
+          .setTitle('🎉 CẬP NHẬT GAME MỚI VÀO CHỢ O.S.T')
+          .setThumbnail(gameCover)
+          .addFields(
+            { name: "🎮 Tên Game", value: `**${gameName}**`, inline: false },
+            { name: "🛠 AppID", value: `${appId}`, inline: true },
+            { name: "👨‍💻 Thêm bởi", value: `<@${message.author.id}>`, inline: true }
+          )
+          .setFooter({ text: 'Hãy mở O.S.T Manager để cài đặt ngay!' })
+          .setTimestamp();
+        await channel.send({ content: '@everyone **Có game mới đổ bộ anh em ơi!** 🚀', embeds: [embed] });
+      } catch (err) {
+        console.error('Không thể gửi thông báo game mới vào kênh:', err);
+      }
       fs.rmSync(tmpDir, { recursive: true, force: true });
 
     } catch (e) {
@@ -576,6 +594,24 @@ client.on('interactionCreate', async interaction => {
         
         notifyTelegram(`🚀 <b>ADMIN VỪA THÊM GAME MỚI (SLASH MENU)</b>\n🎮 Tên Game: <b>${gameName}</b>\n🛠 AppID: <code>${appId}</code>\n👨‍💻 Người thêm: <code>${interaction.user.tag}</code>`);
         
+        const NEW_GAME_CHANNEL_ID = '1518618101892251758';
+        try {
+          const channel = await client.channels.fetch(NEW_GAME_CHANNEL_ID);
+          const embed = new EmbedBuilder()
+            .setColor(0x00FF00) // Green
+            .setTitle('🎉 CẬP NHẬT GAME MỚI VÀO CHỢ O.S.T')
+            .setThumbnail(gameCover)
+            .addFields(
+              { name: "🎮 Tên Game", value: `**${gameName}**`, inline: false },
+              { name: "🛠 AppID", value: `${appId}`, inline: true },
+              { name: "👨‍💻 Thêm bởi", value: `<@${interaction.user.id}>`, inline: true }
+            )
+            .setFooter({ text: 'Hãy mở O.S.T Manager để cài đặt ngay!' })
+            .setTimestamp();
+          await channel.send({ content: '@everyone **Có game mới đổ bộ anh em ơi!** 🚀', embeds: [embed] });
+        } catch (err) {
+          console.error('Không thể gửi thông báo game mới vào kênh:', err);
+        }
       } catch (error) {
         console.error('Lỗi khi thêm game qua Slash Command:', error);
         interaction.editReply('❌ Có lỗi xảy ra khi xử lý hoặc tải dữ liệu lên Github!');
