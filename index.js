@@ -608,7 +608,7 @@ client.on('interactionCreate', async interaction => {
             )
             .setFooter({ text: 'Hãy mở O.S.T Manager để cài đặt ngay!' })
             .setTimestamp();
-          await channel.send({ content: '@everyone **Có game mới đổ bộ anh em ơi!** 🚀', embeds: [embed] });
+          await channel.send({ content: '**Có game mới đổ bộ anh em ơi!** 🚀', embeds: [embed] });
         } catch (err) {
           console.error('Không thể gửi thông báo game mới vào kênh:', err);
         }
