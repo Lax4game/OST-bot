@@ -28,6 +28,26 @@ const ADMIN_ROLE_NAME = 'ᴹᴼᴰᴱᴿᴬᵀᴼᴿ';
 const TELEGRAM_BOT_TOKEN = '8903287354:AAFuVmjFs8lIRO2AgwkhGr2rdWtBaEgNWgg';
 const TELEGRAM_CHAT_ID = '7344500870';
 
+// Hàm kiểm tra Denuvo Anti-Tamper
+async function checkDenuvo(appId) {
+  try {
+    const res = await axios.get(`https://store.steampowered.com/api/appdetails?appids=${appId}`);
+    const data = res.data?.[appId]?.data;
+    if (!data) return { hasDenuvo: false };
+    
+    // Kiểm tra trong danh sách DRM
+    const eula = data.drm_notice || '';
+    const drmList = (data.drm || []).map(d => d.description || '').join(' ');
+    const categories = (data.categories || []).map(c => c.description || '').join(' ');
+    const allText = (eula + ' ' + drmList + ' ' + categories + ' ' + (data.legal_notice || '') + ' ' + (data.about_the_game || '')).toLowerCase();
+    
+    const hasDenuvo = allText.includes('denuvo') || allText.includes('anti-tamper');
+    return { hasDenuvo, gameName: data.name };
+  } catch (e) {
+    return { hasDenuvo: false };
+  }
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -382,6 +402,14 @@ client.on('messageCreate', async (message) => {
       else if (luaUrl) successMsg += `📜 Chế độ: Tải file Lua thủ công\n`;
       if (manifestUrls.length > 0) successMsg += `📦 Đính kèm: ${manifestUrls.length} file Manifest\n`;
       
+      // Kiểm tra Denuvo
+      const denuvoCheck = await checkDenuvo(appId);
+      if (denuvoCheck.hasDenuvo) {
+        successMsg += `\n⚠️ **CẢNH BÁO DENUVO:** Game này sử dụng hệ thống chống crack **Denuvo Anti-Tamper**.\n🛡️ Người dùng cần tự tìm file crack (bypass) để có thể chạy game sau khi tải.\n`;
+      } else {
+        successMsg += `\n🟢 **Không phát hiện Denuvo** — Game có thể chạy ngay sau khi tải!\n`;
+      }
+      
       loadingMsg.edit(successMsg + `Khách hàng hiện đã có thể truy cập tựa game này qua O.S.T Manager!`);
       
       notifyTelegram(`🚀 <b>ADMIN VỪA THÊM GAME MỚI</b>\n🎮 Tên Game: <b>${gameName}</b>\n🛠 AppID: <code>${appId}</code>\n👨‍💻 Người thêm: <code>${message.author.tag}</code>`);
@@ -606,6 +634,14 @@ client.on('interactionCreate', async interaction => {
         execSync(gitCmd);
         
         let successMsg = `✅ **Thêm tựa game thành công!**\n🎮 Tên Game: **${gameName}**\n🔑 Chế độ: Tự sinh file Lua (${foundKeys} Key)\n`;
+        
+        // Kiểm tra Denuvo
+        const denuvoCheck = await checkDenuvo(appId);
+        if (denuvoCheck.hasDenuvo) {
+          successMsg += `\n⚠️ **CẢNH BÁO DENUVO:** Game này sử dụng hệ thống chống crack **Denuvo Anti-Tamper**.\n🛡️ Người dùng cần tự tìm file crack (bypass) để có thể chạy game sau khi tải.\n`;
+        } else {
+          successMsg += `\n🟢 **Không phát hiện Denuvo** — Game có thể chạy ngay sau khi tải!\n`;
+        }
         
         interaction.editReply(successMsg + `Khách hàng hiện đã có thể truy cập tựa game này qua O.S.T Manager!`);
         
